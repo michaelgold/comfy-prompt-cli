@@ -77,7 +77,19 @@ uv run comfy-prompt-cli send path/to/prompt_api.json \
 uv run comfy-prompt-cli wait <prompt_id> --out-dir downloads
 ```
 
-### 5) Dry run (build payload only)
+### 5) One-shot full pass (submit + wait + download)
+
+```bash
+uv run comfy-prompt-cli run path/to/prompt_api.json \
+  --prompt "A 3d cartoon astronaut in a t-pose" \
+  --mesh-seed 12345 \
+  --target-face-num 800000 \
+  --filename-prefix astronaut \
+  --texture-seed 67890 \
+  --out-dir downloads
+```
+
+### 6) Dry run (build payload only)
 
 ```bash
 uv run comfy-prompt-cli send path/to/prompt_api.json --dry-run

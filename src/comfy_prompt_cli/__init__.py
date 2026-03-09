@@ -243,6 +243,58 @@ def _download_glb(client: httpx.Client, base: str, glb_ref: str, out_path: Path)
     out_path.write_bytes(resp.content)
 
 
+async def _wait_for_completion(
+    base: str,
+    prompt_id: str,
+    poll_interval: float,
+    timeout: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    elapsed = 0.0
+    async with httpx.AsyncClient(timeout=60.0) as aclient:
+        while elapsed <= timeout:
+            q = await aclient.get(f"{base}/queue")
+            q.raise_for_status()
+            queue_state = q.json()
+
+            h = await aclient.get(f"{base}/history/{prompt_id}")
+            h.raise_for_status()
+            history_payload = h.json()
+
+            history_item: dict[str, Any] | None = None
+            if isinstance(history_payload, dict):
+                if prompt_id in history_payload and isinstance(history_payload[prompt_id], dict):
+                    history_item = history_payload[prompt_id]
+                elif "outputs" in history_payload:
+                    history_item = history_payload
+
+            if history_item is not None:
+                return queue_state if isinstance(queue_state, dict) else {}, history_item
+
+            running = queue_state.get("queue_running", []) if isinstance(queue_state, dict) else []
+            pending = queue_state.get("queue_pending", []) if isinstance(queue_state, dict) else []
+            typer.echo(f"Waiting... running={len(running)} pending={len(pending)} elapsed={int(elapsed)}s")
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+
+    raise typer.BadParameter(f"Timed out waiting for prompt_id={prompt_id}")
+
+
+def _download_from_history(base: str, prompt_id: str, history_item: dict[str, Any], out_dir: Path) -> list[Path]:
+    glb_refs = _extract_glb_refs(history_item)
+    if not glb_refs:
+        return []
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    downloaded: list[Path] = []
+    with httpx.Client(timeout=120.0) as client:
+        for ref in glb_refs:
+            filename = Path(ref).name or f"{prompt_id}.glb"
+            dest = out_dir / filename
+            _download_glb(client, base, ref, dest)
+            downloaded.append(dest)
+    return downloaded
+
+
 @app.command("wait")
 def wait_prompt(
     prompt_id: str = typer.Argument(..., help="ComfyUI prompt_id"),
@@ -256,54 +308,84 @@ def wait_prompt(
     cfg = _load_config(config)
     base = str(cfg.server_url).rstrip("/")
 
-    async def _run_wait() -> None:
-        elapsed = 0.0
-        async with httpx.AsyncClient(timeout=60.0) as aclient:
-            while elapsed <= timeout:
-                # Queue status is useful for async progress visibility.
-                q = await aclient.get(f"{base}/queue")
-                q.raise_for_status()
-                queue_state = q.json()
+    queue_state, history_item = asyncio.run(_wait_for_completion(base, prompt_id, poll_interval, timeout))
+    typer.echo("Prompt completed.")
+    typer.echo(json.dumps({"prompt_id": prompt_id, "queue": queue_state}, indent=2))
 
-                h = await aclient.get(f"{base}/history/{prompt_id}")
-                h.raise_for_status()
-                history_payload = h.json()
+    if download_glb:
+        downloaded = _download_from_history(base, prompt_id, history_item, out_dir)
+        if not downloaded:
+            typer.echo("No GLB reference found in history outputs.")
+            return
+        for path in downloaded:
+            typer.echo(f"Downloaded {path}")
 
-                history_item: dict[str, Any] | None = None
-                if isinstance(history_payload, dict):
-                    if prompt_id in history_payload and isinstance(history_payload[prompt_id], dict):
-                        history_item = history_payload[prompt_id]
-                    elif "outputs" in history_payload:
-                        history_item = history_payload
 
-                if history_item is not None:
-                    typer.echo("Prompt completed.")
-                    typer.echo(json.dumps({"prompt_id": prompt_id, "queue": queue_state}, indent=2))
+@app.command("run")
+def run_prompt(
+    prompt_file: Path = typer.Argument(..., exists=True, readable=True, help="Path to prompt/workflow JSON"),
+    config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
+    client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
+    positive_prompt: str | None = typer.Option(None, "--prompt", help="Override positive prompt text"),
+    mesh_seed: int | None = typer.Option(None, help="Override Trellis mesh seed"),
+    target_face_num: int | None = typer.Option(None, help="Override target face count"),
+    filename_prefix: str | None = typer.Option(None, help="Override output filename prefix"),
+    texture_seed: int | None = typer.Option(None, help="Override Trellis texture seed"),
+    poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
+    timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
+    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+) -> None:
+    """Submit prompt, wait asynchronously, and download GLB outputs."""
+    cfg = _load_config(config)
+    base = str(cfg.server_url).rstrip("/")
 
-                    if download_glb:
-                        glb_refs = _extract_glb_refs(history_item)
-                        if not glb_refs:
-                            typer.echo("No GLB reference found in history outputs.")
-                            return
+    try:
+        data = json.loads(prompt_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter(f"Invalid JSON in {prompt_file}: {exc}") from exc
 
-                        out_dir.mkdir(parents=True, exist_ok=True)
-                        with httpx.Client(timeout=120.0) as client:
-                            for ref in glb_refs:
-                                filename = Path(ref).name or f"{prompt_id}.glb"
-                                dest = out_dir / filename
-                                _download_glb(client, base, ref, dest)
-                                typer.echo(f"Downloaded {dest}")
-                    return
+    if not isinstance(data, dict):
+        raise typer.BadParameter("Prompt JSON root must be an object.")
 
-                running = queue_state.get("queue_running", []) if isinstance(queue_state, dict) else []
-                pending = queue_state.get("queue_pending", []) if isinstance(queue_state, dict) else []
-                typer.echo(f"Waiting... running={len(running)} pending={len(pending)} elapsed={int(elapsed)}s")
-                await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+    prompt = _extract_prompt_payload(data)
+    changes = _apply_overrides(
+        prompt,
+        positive_prompt=positive_prompt,
+        mesh_seed=mesh_seed,
+        target_face_num=target_face_num,
+        filename_prefix=filename_prefix,
+        texture_seed=texture_seed,
+    )
+    if changes:
+        typer.echo("Applied overrides:")
+        for c in changes:
+            typer.echo(f"- {c}")
 
-        raise typer.BadParameter(f"Timed out waiting for prompt_id={prompt_id}")
+    payload: dict[str, Any] = {
+        "prompt": prompt,
+        "client_id": client_id or str(uuid.uuid4()),
+    }
 
-    asyncio.run(_run_wait())
+    with httpx.Client(timeout=60.0) as client:
+        r = client.post(f"{base}/prompt", json=payload)
+        r.raise_for_status()
+        result = r.json()
+
+    prompt_id = result.get("prompt_id")
+    if not isinstance(prompt_id, str):
+        raise typer.BadParameter(f"Unexpected /prompt response: {json.dumps(result)}")
+
+    typer.echo(json.dumps(result, indent=2))
+    queue_state, history_item = asyncio.run(_wait_for_completion(base, prompt_id, poll_interval, timeout))
+    typer.echo("Prompt completed.")
+    typer.echo(json.dumps({"prompt_id": prompt_id, "queue": queue_state}, indent=2))
+
+    downloaded = _download_from_history(base, prompt_id, history_item, out_dir)
+    if not downloaded:
+        typer.echo("No GLB reference found in history outputs.")
+        return
+    for path in downloaded:
+        typer.echo(f"Downloaded {path}")
 
 
 config_app = typer.Typer(help="Manage local config")
