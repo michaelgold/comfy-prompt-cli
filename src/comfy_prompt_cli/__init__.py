@@ -74,7 +74,9 @@ def _load_prompt_from_file(prompt_file: Path) -> dict[str, Any]:
     return _extract_prompt_payload(data)
 
 
-def _find_node_by_class(prompt: dict[str, Any], class_type: str) -> tuple[str, dict[str, Any]] | None:
+def _find_node_by_class(
+    prompt: dict[str, Any], class_type: str
+) -> tuple[str, dict[str, Any]] | None:
     for node_id, node in prompt.items():
         if isinstance(node, dict) and node.get("class_type") == class_type:
             return node_id, node
@@ -89,7 +91,9 @@ def _set_input_if_node(node: dict[str, Any], key: str, value: Any) -> bool:
     return False
 
 
-def _set_input_on_first_node_by_class(prompt: dict[str, Any], class_type: str, key: str, value: Any) -> str | None:
+def _set_input_on_first_node_by_class(
+    prompt: dict[str, Any], class_type: str, key: str, value: Any
+) -> str | None:
     found = _find_node_by_class(prompt, class_type)
     if not found:
         return None
@@ -98,7 +102,9 @@ def _set_input_on_first_node_by_class(prompt: dict[str, Any], class_type: str, k
     return found[0]
 
 
-def _replace_all_load_image_inputs(prompt: dict[str, Any], image_name: str) -> list[str]:
+def _replace_all_load_image_inputs(
+    prompt: dict[str, Any], image_name: str
+) -> list[str]:
     updated_nodes: list[str] = []
     for node_id, node in prompt.items():
         if not isinstance(node, dict) or node.get("class_type") != "LoadImage":
@@ -130,7 +136,9 @@ def _apply_overrides(
 
             meta = node.get("_meta", {}) if isinstance(node.get("_meta"), dict) else {}
             title = str(meta.get("title", "")).lower()
-            inputs = node.get("inputs", {}) if isinstance(node.get("inputs"), dict) else {}
+            inputs = (
+                node.get("inputs", {}) if isinstance(node.get("inputs"), dict) else {}
+            )
 
             if "negative" in title:
                 continue
@@ -158,31 +166,45 @@ def _apply_overrides(
     if mesh_seed is not None:
         found = _find_node_by_class(prompt, "Trellis2MeshWithVoxelAdvancedGenerator")
         if not found or not _set_input_if_node(found[1], "seed", mesh_seed):
-            raise typer.BadParameter("Could not find Trellis2MeshWithVoxelAdvancedGenerator for mesh_seed override.")
+            raise typer.BadParameter(
+                "Could not find Trellis2MeshWithVoxelAdvancedGenerator for mesh_seed override."
+            )
         changes.append(f"mesh_seed={mesh_seed} -> node {found[0]}")
 
     if target_face_num is not None:
         found = _find_node_by_class(prompt, "Trellis2SimplifyMesh")
-        if not found or not _set_input_if_node(found[1], "target_face_num", target_face_num):
-            raise typer.BadParameter("Could not find Trellis2SimplifyMesh for target_face_num override.")
+        if not found or not _set_input_if_node(
+            found[1], "target_face_num", target_face_num
+        ):
+            raise typer.BadParameter(
+                "Could not find Trellis2SimplifyMesh for target_face_num override."
+            )
         changes.append(f"target_face_num={target_face_num} -> node {found[0]}")
 
     if filename_prefix is not None:
         found = _find_node_by_class(prompt, "Trellis2ExportMesh")
-        if not found or not _set_input_if_node(found[1], "filename_prefix", filename_prefix):
-            raise typer.BadParameter("Could not find Trellis2ExportMesh for filename_prefix override.")
+        if not found or not _set_input_if_node(
+            found[1], "filename_prefix", filename_prefix
+        ):
+            raise typer.BadParameter(
+                "Could not find Trellis2ExportMesh for filename_prefix override."
+            )
         changes.append(f"filename_prefix={filename_prefix} -> node {found[0]}")
 
     if texture_seed is not None:
         found = _find_node_by_class(prompt, "Trellis2MeshTexturing")
         if not found or not _set_input_if_node(found[1], "seed", texture_seed):
-            raise typer.BadParameter("Could not find Trellis2MeshTexturing for texture_seed override.")
+            raise typer.BadParameter(
+                "Could not find Trellis2MeshTexturing for texture_seed override."
+            )
         changes.append(f"texture_seed={texture_seed} -> node {found[0]}")
 
     return changes
 
 
-def _submit_prompt(base: str, prompt: dict[str, Any], client_id: str | None) -> dict[str, Any]:
+def _submit_prompt(
+    base: str, prompt: dict[str, Any], client_id: str | None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "prompt": prompt,
         "client_id": client_id or str(uuid.uuid4()),
@@ -218,7 +240,9 @@ def _upload_input_image(base: str, image_path: Path, overwrite: bool = True) -> 
 
 
 @app.command("health")
-def health(config: Path = typer.Option(CONFIG_PATH, help="Path to config.json")) -> None:
+def health(
+    config: Path = typer.Option(CONFIG_PATH, help="Path to config.json")
+) -> None:
     """Check server connectivity via /system_stats."""
     cfg = _load_config(config)
     base = str(cfg.server_url).rstrip("/")
@@ -234,13 +258,19 @@ def health(config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"))
 
 @app.command("send")
 def send_prompt(
-    prompt_file: Path = typer.Argument(..., exists=True, readable=True, help="Path to prompt/workflow JSON"),
+    prompt_file: Path = typer.Argument(
+        ..., exists=True, readable=True, help="Path to prompt/workflow JSON"
+    ),
     config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
     client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
-    positive_prompt: str | None = typer.Option(None, "--prompt", help="Override positive prompt text"),
+    positive_prompt: str | None = typer.Option(
+        None, "--prompt", help="Override positive prompt text"
+    ),
     mesh_seed: int | None = typer.Option(None, help="Override Trellis mesh seed"),
     target_face_num: int | None = typer.Option(None, help="Override target face count"),
-    filename_prefix: str | None = typer.Option(None, help="Override output filename prefix"),
+    filename_prefix: str | None = typer.Option(
+        None, help="Override output filename prefix"
+    ),
     texture_seed: int | None = typer.Option(None, help="Override Trellis texture seed"),
     dry_run: bool = typer.Option(False, help="Build payload but do not POST"),
 ) -> None:
@@ -280,7 +310,9 @@ def send_prompt(
     typer.echo(json.dumps(result, indent=2))
 
 
-def _get_history_item(client: httpx.Client, base: str, prompt_id: str) -> dict[str, Any] | None:
+def _get_history_item(
+    client: httpx.Client, base: str, prompt_id: str
+) -> dict[str, Any] | None:
     r = client.get(f"{base}/history/{prompt_id}")
     r.raise_for_status()
     payload = r.json()
@@ -308,7 +340,10 @@ def _extract_file_refs(history_item: dict[str, Any], extensions: set[str]) -> li
 
         if isinstance(value, dict):
             filename = value.get("filename")
-            if isinstance(filename, str) and Path(filename).suffix.lower() in extensions:
+            if (
+                isinstance(filename, str)
+                and Path(filename).suffix.lower() in extensions
+            ):
                 subfolder = value.get("subfolder")
                 if isinstance(subfolder, str) and subfolder.strip():
                     refs.append(f"{subfolder}/{filename}")
@@ -333,11 +368,15 @@ def _extract_file_refs(history_item: dict[str, Any], extensions: set[str]) -> li
     return refs
 
 
-def _download_glb(client: httpx.Client, base: str, glb_ref: str, out_path: Path) -> None:
+def _download_glb(
+    client: httpx.Client, base: str, glb_ref: str, out_path: Path
+) -> None:
     _download_ref(client, base, glb_ref, out_path)
 
 
-def _download_ref(client: httpx.Client, base: str, file_ref: str, out_path: Path) -> None:
+def _download_ref(
+    client: httpx.Client, base: str, file_ref: str, out_path: Path
+) -> None:
     if file_ref.startswith("http://") or file_ref.startswith("https://"):
         resp = client.get(file_ref)
         resp.raise_for_status()
@@ -376,25 +415,43 @@ async def _wait_for_completion(
 
             history_item: dict[str, Any] | None = None
             if isinstance(history_payload, dict):
-                if prompt_id in history_payload and isinstance(history_payload[prompt_id], dict):
+                if prompt_id in history_payload and isinstance(
+                    history_payload[prompt_id], dict
+                ):
                     history_item = history_payload[prompt_id]
                 elif "outputs" in history_payload:
                     history_item = history_payload
 
             if history_item is not None:
-                return queue_state if isinstance(queue_state, dict) else {}, history_item
+                return (
+                    queue_state if isinstance(queue_state, dict) else {}
+                ), history_item
 
-            running = queue_state.get("queue_running", []) if isinstance(queue_state, dict) else []
-            pending = queue_state.get("queue_pending", []) if isinstance(queue_state, dict) else []
-            typer.echo(f"Waiting... running={len(running)} pending={len(pending)} elapsed={int(elapsed)}s")
+            running = (
+                queue_state.get("queue_running", [])
+                if isinstance(queue_state, dict)
+                else []
+            )
+            pending = (
+                queue_state.get("queue_pending", [])
+                if isinstance(queue_state, dict)
+                else []
+            )
+            typer.echo(
+                f"Waiting... running={len(running)} pending={len(pending)} elapsed={int(elapsed)}s"
+            )
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
 
     raise typer.BadParameter(f"Timed out waiting for prompt_id={prompt_id}")
 
 
-def _download_from_history(base: str, prompt_id: str, history_item: dict[str, Any], out_dir: Path) -> list[Path]:
-    return _download_from_history_by_ext(base, prompt_id, history_item, out_dir, GLB_EXTENSIONS)
+def _download_from_history(
+    base: str, prompt_id: str, history_item: dict[str, Any], out_dir: Path
+) -> list[Path]:
+    return _download_from_history_by_ext(
+        base, prompt_id, history_item, out_dir, GLB_EXTENSIONS
+    )
 
 
 def _download_from_history_by_ext(
@@ -436,10 +493,14 @@ def _submit_wait_and_download(
         raise typer.BadParameter(f"Unexpected /prompt response: {json.dumps(result)}")
 
     typer.echo(json.dumps(result, indent=2))
-    queue_state, history_item = asyncio.run(_wait_for_completion(base, prompt_id, poll_interval, timeout))
+    queue_state, history_item = asyncio.run(
+        _wait_for_completion(base, prompt_id, poll_interval, timeout)
+    )
     typer.echo("Prompt completed.")
     typer.echo(json.dumps({"prompt_id": prompt_id, "queue": queue_state}, indent=2))
-    return _download_from_history_by_ext(base, prompt_id, history_item, out_dir, extensions)
+    return _download_from_history_by_ext(
+        base, prompt_id, history_item, out_dir, extensions
+    )
 
 
 @app.command("wait")
@@ -448,14 +509,20 @@ def wait_prompt(
     config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
     poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
     timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
-    download_glb: bool = typer.Option(True, help="Download generated GLB when available"),
-    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+    download_glb: bool = typer.Option(
+        True, help="Download generated GLB when available"
+    ),
+    out_dir: Path = typer.Option(
+        Path("downloads"), help="Directory to write downloaded files"
+    ),
 ) -> None:
     """Poll queue/history until prompt completes; optionally download GLB output."""
     cfg = _load_config(config)
     base = str(cfg.server_url).rstrip("/")
 
-    queue_state, history_item = asyncio.run(_wait_for_completion(base, prompt_id, poll_interval, timeout))
+    queue_state, history_item = asyncio.run(
+        _wait_for_completion(base, prompt_id, poll_interval, timeout)
+    )
     typer.echo("Prompt completed.")
     typer.echo(json.dumps({"prompt_id": prompt_id, "queue": queue_state}, indent=2))
 
@@ -470,17 +537,25 @@ def wait_prompt(
 
 @app.command("run")
 def run_prompt(
-    prompt_file: Path = typer.Argument(..., exists=True, readable=True, help="Path to prompt/workflow JSON"),
+    prompt_file: Path = typer.Argument(
+        ..., exists=True, readable=True, help="Path to prompt/workflow JSON"
+    ),
     config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
     client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
-    positive_prompt: str | None = typer.Option(None, "--prompt", help="Override positive prompt text"),
+    positive_prompt: str | None = typer.Option(
+        None, "--prompt", help="Override positive prompt text"
+    ),
     mesh_seed: int | None = typer.Option(None, help="Override Trellis mesh seed"),
     target_face_num: int | None = typer.Option(None, help="Override target face count"),
-    filename_prefix: str | None = typer.Option(None, help="Override output filename prefix"),
+    filename_prefix: str | None = typer.Option(
+        None, help="Override output filename prefix"
+    ),
     texture_seed: int | None = typer.Option(None, help="Override Trellis texture seed"),
     poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
     timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
-    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+    out_dir: Path = typer.Option(
+        Path("downloads"), help="Directory to write downloaded files"
+    ),
 ) -> None:
     """Submit prompt, wait asynchronously, and download GLB outputs."""
     cfg = _load_config(config)
@@ -518,7 +593,9 @@ def run_prompt(
 
 @app.command("text-to-image")
 def text_to_image(
-    prompt_text: str = typer.Option(..., "--prompt", help="Text prompt to generate the image"),
+    prompt_text: str = typer.Option(
+        ..., "--prompt", help="Text prompt to generate the image"
+    ),
     workflow_file: Path = typer.Option(
         DEFAULT_TEXT_TO_IMAGE_WORKFLOW,
         help="Path to qwen_image_2512 API prompt JSON",
@@ -526,10 +603,14 @@ def text_to_image(
     config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
     client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
     seed: int | None = typer.Option(None, help="Override KSampler seed"),
-    filename_prefix: str | None = typer.Option(None, help="Override SaveImage filename prefix"),
+    filename_prefix: str | None = typer.Option(
+        None, help="Override SaveImage filename prefix"
+    ),
     poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
     timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
-    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+    out_dir: Path = typer.Option(
+        Path("downloads"), help="Directory to write downloaded files"
+    ),
 ) -> None:
     """Generate image from text using qwen_image_2512 workflow."""
     cfg = _load_config(config)
@@ -552,9 +633,13 @@ def text_to_image(
         changes.append(f"seed={seed} -> node {node_id}")
 
     if filename_prefix is not None:
-        node_id = _set_input_on_first_node_by_class(prompt, "SaveImage", "filename_prefix", filename_prefix)
+        node_id = _set_input_on_first_node_by_class(
+            prompt, "SaveImage", "filename_prefix", filename_prefix
+        )
         if node_id is None:
-            raise typer.BadParameter("Could not find SaveImage for filename_prefix override.")
+            raise typer.BadParameter(
+                "Could not find SaveImage for filename_prefix override."
+            )
         changes.append(f"filename_prefix={filename_prefix} -> node {node_id}")
 
     if changes:
@@ -580,7 +665,9 @@ def text_to_image(
 
 @app.command("image-text-to-image")
 def image_text_to_image(
-    image: Path = typer.Option(..., exists=True, readable=True, help="Local input image path"),
+    image: Path = typer.Option(
+        ..., exists=True, readable=True, help="Local input image path"
+    ),
     prompt_text: str = typer.Option(..., "--prompt", help="Edit prompt"),
     workflow_file: Path = typer.Option(
         DEFAULT_IMAGE_TEXT_TO_IMAGE_WORKFLOW,
@@ -589,10 +676,14 @@ def image_text_to_image(
     config: Path = typer.Option(CONFIG_PATH, help="Path to config.json"),
     client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
     seed: int | None = typer.Option(None, help="Override KSampler seed"),
-    filename_prefix: str | None = typer.Option(None, help="Override SaveImage filename prefix"),
+    filename_prefix: str | None = typer.Option(
+        None, help="Override SaveImage filename prefix"
+    ),
     poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
     timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
-    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+    out_dir: Path = typer.Option(
+        Path("downloads"), help="Directory to write downloaded files"
+    ),
 ) -> None:
     """Edit an image with text prompt using qwen_image_edit_2511 workflow."""
     cfg = _load_config(config)
@@ -602,7 +693,9 @@ def image_text_to_image(
     uploaded_image_ref = _upload_input_image(base, image)
     updated_nodes = _replace_all_load_image_inputs(prompt, uploaded_image_ref)
     if not updated_nodes:
-        raise typer.BadParameter("Could not find LoadImage nodes to patch uploaded image.")
+        raise typer.BadParameter(
+            "Could not find LoadImage nodes to patch uploaded image."
+        )
 
     changes = _apply_overrides(
         prompt,
@@ -621,9 +714,13 @@ def image_text_to_image(
         changes.append(f"seed={seed} -> node {node_id}")
 
     if filename_prefix is not None:
-        node_id = _set_input_on_first_node_by_class(prompt, "SaveImage", "filename_prefix", filename_prefix)
+        node_id = _set_input_on_first_node_by_class(
+            prompt, "SaveImage", "filename_prefix", filename_prefix
+        )
         if node_id is None:
-            raise typer.BadParameter("Could not find SaveImage for filename_prefix override.")
+            raise typer.BadParameter(
+                "Could not find SaveImage for filename_prefix override."
+            )
         changes.append(f"filename_prefix={filename_prefix} -> node {node_id}")
 
     typer.echo("Applied overrides:")
@@ -648,7 +745,9 @@ def image_text_to_image(
 
 @app.command("image-to-glb")
 def image_to_glb(
-    image: Path = typer.Option(..., exists=True, readable=True, help="Local input image path"),
+    image: Path = typer.Option(
+        ..., exists=True, readable=True, help="Local input image path"
+    ),
     workflow_file: Path = typer.Option(
         DEFAULT_IMAGE_TO_GLB_WORKFLOW,
         help="Path to img_to_trellis2 API prompt JSON",
@@ -657,11 +756,15 @@ def image_to_glb(
     client_id: str | None = typer.Option(None, help="Optional ComfyUI client_id"),
     mesh_seed: int | None = typer.Option(None, help="Override Trellis mesh seed"),
     target_face_num: int | None = typer.Option(None, help="Override target face count"),
-    filename_prefix: str | None = typer.Option(None, help="Override output filename prefix"),
+    filename_prefix: str | None = typer.Option(
+        None, help="Override output filename prefix"
+    ),
     texture_seed: int | None = typer.Option(None, help="Override Trellis texture seed"),
     poll_interval: float = typer.Option(2.0, min=0.5, help="Polling interval seconds"),
     timeout: float = typer.Option(1800.0, min=1.0, help="Max wait time in seconds"),
-    out_dir: Path = typer.Option(Path("downloads"), help="Directory to write downloaded files"),
+    out_dir: Path = typer.Option(
+        Path("downloads"), help="Directory to write downloaded files"
+    ),
 ) -> None:
     """Convert image to GLB using img_to_trellis2 workflow."""
     cfg = _load_config(config)
@@ -671,7 +774,9 @@ def image_to_glb(
     uploaded_image_ref = _upload_input_image(base, image)
     updated_nodes = _replace_all_load_image_inputs(prompt, uploaded_image_ref)
     if not updated_nodes:
-        raise typer.BadParameter("Could not find LoadImage nodes to patch uploaded image.")
+        raise typer.BadParameter(
+            "Could not find LoadImage nodes to patch uploaded image."
+        )
 
     changes = _apply_overrides(
         prompt,
